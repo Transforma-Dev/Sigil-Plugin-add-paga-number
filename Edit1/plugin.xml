@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin>
+    <name>Edit1</name>
+    <type>edit</type>
+    <version>0.3.0</version>
+    <author>Your Name</author>
+    <description>Performs addition operation and prints the result.</description>
+    <engine>python3.4</engine>
+    <oslist>osx,win,unx</oslist>
+</plugin>
