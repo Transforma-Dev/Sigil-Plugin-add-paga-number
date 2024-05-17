@@ -1,237 +1,206 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
-
-# target script
-
 import sys
-import os
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QFileDialog
+import pdfplumber
+import zipfile
+import os,sys
+import re
+from lxml import etree
+from bs4 import BeautifulSoup
 
+#Split the filename and directory of th script file
+script_files = os.path.abspath(__file__)
+script_directory,script_filename = os.path.split(script_files)
+
+def select_pdf_file():
+    options = QFileDialog.Options()
+    file_path, _ = QFileDialog.getOpenFileName(None, "Select PDF File", "", "PDF Files (*.pdf)", options=options)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return file_path
+
+#Define the function to find the pdf page number and find first line
+def pdf_line(pdf_path):
+    #Split the directory and filename
+    directory,filename=os.path.split(pdf_path)
+        
+    #Split the file extension and and .txt extension
+    output_file=os.path.splitext(filename)
+    pageno_folder = script_directory+"/pageno/"
+    #Create the pageno folder if it doesn't exist
+    if not os.path.exists(pageno_folder):
+        os.makedirs(pageno_folder)
+    output_text=pageno_folder+output_file[0]+".txt"
+
+    with pdfplumber.open(pdf_path) as pdf:
+        numbers = 0
+        line = ''
+        num_pages = len(pdf.pages)  #Find number of pages in pdf
+        #Loop through the each page
+        for page_num in range(num_pages):
+            page = pdf.pages[page_num]
+            text = page.extract_text()
+            first_line = text.split('\n')[0]  # Extract the first line
+            digits = re.findall(r'\d+', first_line)  # Find all digits in the first line
+            #Check the page is not empty
+            if len(text.split('\n'))>1:
+                second_line = text.split('\n')[1]  # Extract the second line
+            else:
+                second_line= ''
+
+            #Find page number in top or bottom of the page
+            if len(digits)==0 or page_num==0:
+                last_line = text.split('\n')[-1]
+                digits=re.findall(r'\d+', last_line) 
+                if len(text.split('\n'))>1:
+                    second_line = text.split('\n')[0]  # Extract the second line
+                else:
+                    second_line= ''
+
+            if len(digits)==1:
+                numbers = int(digits[0])
+            elif len(digits)==0:
+                numbers=int(numbers)+1
+            else:
+                numbers=int(numbers)+1
+            #Add tag for pageno and text
+            line+=f'<pageno>{numbers}</pageno><title>{second_line}</title>\n' 
+        
+    #Save the content in file
+    with open(output_text, 'w') as file:
+        file.write(line)
+
+    return output_text
 
 def run(bk):
-    print ("Entered Target Script run() routine")
+    app = QApplication(sys.argv)
+    pdf_file_path = select_pdf_file()
 
-    epubversion = "2.0"
-    if bk.launcher_version() >= 20160102:
-        epubversion = bk.epub_version()
-
-    lastid = None
-
-    # Examples of using the Iterators
-    
-    # all xhtml/html files
-    print("\nExercising: bk.text_iter()")
-    for (id, href) in bk.text_iter():
-        print(id, href)
-        lastid = id
-
-    # all style sheets
-    print("\nExercising: bk.css_iter()")
-    for (id, href) in bk.css_iter():
-        print(id, href)
-
-    # all images
-    print("\nExercising: bk.image_iter()")
-    for (id, href, mime) in bk.image_iter():
-        print(id, href, mime)
-
-    # all fonts
-    print("\nExercising: bk.font_iter()")
-    for (id, href, mime) in bk.font_iter():
-        print(id, href, mime)
-
-    # all files in the OPF manifest
-    print("\nExercising: bk.manifest_iter()")
-    for (id, href, mime) in bk.manifest_iter():
-        print(id, href, mime)
-    
-    # all files in the OPF spine in spine order
-    print("\nExercising: bk.spine_iter()")
-    for (id, linear, href) in bk.spine_iter():
-        print(id, linear, href)
-
-    # all elements of the OPF guide
-    print("\nExercising: bk.guide_iter()")
-    for (type, title, href, id) in bk.guide_iter():
-        print(type, title, href, id)
-
-    # all audio and video files
-    print("\nExercising: bk.media_iter()")
-    for (id, href, mime) in bk.media_iter():
-        print(id, href, mime)
-
-    # all other ebook files not in the manifest
-    print("\nExercising: bk.other_iter()")
-    for book_href in bk.other_iter():
-        print(book_href)
-
-    # all files selected in the BookBrowser
-    print("\nExercising: bk.selected_iter()")
-    for (id_type, id) in bk.selected_iter():
-        if id_type == "manifest":
-            href = bk.id_to_href(id, ow=None)
-            mime = bk.id_to_mime(id, ow=None)
-            print(id_type, id, href, mime)
-        else:
-            print(id_type, id)
-
-    # all files in the manifest in an epub3
-    print("\nExercising: bk.manifest_epub3_iter()")
-    for (id, href, mtype, props, fall, over) in bk.manifest_epub3_iter():
-        print(id, href, mtype, props, fall, over)
-
-    # all files in the spine in an epub3
-    print("\nExercising: bk.spine_epub3_iter()")
-    for (idref, linear, props, href) in bk.spine_epub3_iter():
-        print(idref, linear, props, href)
-
-    # Example of hunspell spell checker
-    print("\nExercising: the hunspell spell checker")
-    dic_dirs = bk.get_dictionary_dirs();
-    afffile = None
-    dicfile = None
-    for adir in dic_dirs:
-        afile = os.path.join(adir, "en_US.aff")
-        dfile = os.path.join(adir, "en_US.dic")
-        if os.path.exists(afile) and os.path.exists(dfile):
-            afffile = afile
-            dicfile = dfile
-            break
-    if bk.hspell is not None and afffile is not None and dicfile is not None:
-        bk.hspell.loadDictionary(afffile, dicfile)
-        checklist =  ["hello", "goodbye", "don't", "junkj", "misteak", "failed-and"]
-        for word in checklist:
-            res = bk.hspell.check(word)
-            if res != 1:
-                print(word, "incorrect", bk.hspell.suggest(word))
-            else:
-                print(word, "correct")    
-        bk.hspell.cleanUp()
-
-    # examples for using the bs4/gumbo parser to process xhtml
-    print("\nExercising: the gumbo bs4 adapter")
-    import sigil_gumbo_bs4_adapter as gumbo_bs4
-    samp = """
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" 
-  "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en-US">
-<head><title>testing & entities</title></head>
-<body>
-  <p class="first second">this&nbsp;is&#160;the&#xa0;<i><b>copyright</i></b> symbol "&copy;"</p>
-  <p xmlns:xlink="http://www.w3.org/xlink" class="second" xlink:href="http://www.ggogle.com">this used to test atribute namespaces</p>
-</body>
-</html>
-"""
-    soup = gumbo_bs4.parse(samp)
-    for node in soup.find_all(attrs={'class':'second'}):
-        print(node)
-
-    # Example of reading a non-manifest book file
-    print("\nExercising: reading a non-manifest book file")
-    stuff = bk.readotherfile('META-INF/container.xml')
-    print(stuff)
-    
-    # Example of reading a file with a specific OPF manifest id
-    print("\nExercising: reading a specific OPF manifest id")
-    stuff = bk.readfile(lastid)
-    if stuff is not None:
-        print("Read a file")
-
-    # Example of writing to a file specified by the manifest id
-    print("\nExercising: writing to a specific OPF manifest id")
-    bk.writefile(lastid, stuff)
-    if lastid in bk._w.modified.keys():
-        print("Wrote a file")
-    
-    # Example of adding your own file to the manifest
-    print("\nExercising: adding your own file to the manifest")
-    data = '<?xml version="1.0" encoding="utf-8"?>\n'
-    if epubversion.startswith("3"):
-        data += '<!DOCTYPE html>\n'
+    if pdf_file_path:
+        #Call the function
+        output_text = pdf_line(pdf_file_path)
     else:
-        data += '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" '
-        data += '"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">\n'
-    data += '<html xmlns="http://www.w3.org/1999/xhtml">\n'
-    data += '<head>\n<title>Hello World</title>\n</head>\n'
-    data += '<body>\n'
-    data += '<p>Hello ... I was Created by a Plugin</p>\n'
-    data += '</body>\n'
-    data += '</html>\n'
-    basename = "my_test.html"
-    mt = "application/xhtml+xml"
-    uid1 = 'add1'
-    bk.addfile(uid1, basename, data, mt)
-    if uid1 in bk._w.id_to_mime.keys():
-        print("Successfully added a file")
-    
-    # example of adding it to the end of the spine
-    #bk.spine_insert_before(-1, uid1, "yes")
-    new_spine = bk.getspine()
-    new_spine.append((uid1,"yes"))
-    bk.setspine(new_spine)
-    # all files in the OPF spine in spine order
-    print("\nChecking if added to the spine")
-    for (id, linear, href) in bk.spine_iter():
-        print(id, linear, href)
+        print("No PDF file selected.")
+
+    title_pattern = re.compile(r'<title>(.*?)</title>', re.IGNORECASE)
+    pageno_pattern = re.compile(r'<pageno>(.*?)</pageno>', re.IGNORECASE)
+    title_list=[]
+    pageno_list=[]
+    pageno_change=pageno_list
+    pageno_store=[]
+
+    with open(output_text, 'r') as file:
+        # Read each line in the file
+        for line in file:
+            title_match = title_pattern.search(line)
+            pageno_match = pageno_pattern.search(line)
+            if title_match:
+                # Process each line as needed
+                title_text = title_match.group(1)  # Extract the text inside the title tag
+                if title_text is not None:
+                    title_list.append(title_text)
+            if pageno_match:
+                # Process each line as needed
+                pageno_text = pageno_match.group(1)  # Extract the text inside the title tag
+                if pageno_text is not None:
+                    pageno_list.append(pageno_text)
 
 
-    # Examples of Using the Convenience Functions
-    print("\nExercising: basename to id mapping")
-    bid = bk.basename_to_id(basename)
-    if bid == uid1:
-        print("Successfully mapped a bassename to its manifest id")
+    for (id, href) in bk.text_iter():
+        filename = os.path.basename(id)  # Extract only the filename
+        for char in filename:
+            if char.isdigit():
+                html = bk.readfile(id)
+                soup = BeautifulSoup(html, 'html.parser')
+                all_tags = soup.find_all()
+                #print(all_tags)
+                for tag in all_tags:
+                    tag_string = str(tag)
+                    if tag.name=="p" or tag.name=="li":
+                        p_text = re.sub(r'<[^>]+>', '', tag_string)
+                        if p_text is not None:
+                            if len(title_list)!=0:
+                                #Iterate through each title_list
+                                for index, i in enumerate(title_list):
+                                    if i.endswith("-"):
+                                        i=i.split("-")
+                                        i=i[0]
+                                    if  "•" in i:
+                                        i=i.replace("• ","")
+                                    i=re.sub(r'^\d+\.+\s*',"",i)
+                                    
+                                    if len(i)>30:
+                                        i=i[:30]
+                                    if i!="":
+                                        ref=i.split()
+                                        reff=''
+                                        if ref[0]==p_text: 
+                                            i=ref[0]
+                                        if len(ref)>3:
+                                            reff=ref[0]+" "+ref[1]
+                                            if reff==p_text:
+                                                i=reff
+                                        if i==p_text:
+                                            if index!=0:
+                                                pageno_list=pageno_list[index:]
+                                                title_list=title_list[index:]
+                                                pageno_store.append(pageno_list[0])
+                                            tag_string = tag_string.split(i)
+                                            new_text = f'{tag_string[0]}<span>{pageno_list[0]}</span>{i}{tag_string[1]}'
+                                            new_text = re.sub(r'<\s*p[^>]*>', '',new_text)
+                                            new_text = re.sub(r'<\s*/p[^>]*>', '',new_text)
+                                            if index==0:
+                                                pageno_store.append(pageno_list[0])
+                                                pageno_list=pageno_list[index+1:]
+                                                title_list=title_list[index+1:]
+                                            tag.string = new_text
+                                            break
+                                        elif i in p_text:
+                                            i=i.split()
+                                            i_text=''
+                                            for j in range(5):
+                                                count=(tag_string.count(i[j]))
+                                                i_text+=i[j]+" "
+                                                if count==1:
+                                                    break
+                                            if index!=0:
+                                                pageno_list=pageno_list[index:]
+                                                title_list=title_list[index:]
+                                                pageno_store.append(pageno_list[0])
 
-    # Example of creating another file, adding it and then deleting it
-    print("\nExercising: creating file, adding it and then deleting it")
-    data = '<html>\n<head>\n<title>Hello2</title>\n</head>\n<body><p>Hello World2</p>\n</body>\n</html>\n'
-    basename = "my_test2.html"
-    uid2 = 'add2'
-    bk.addfile(uid2, basename, data)
-    if uid2 in bk._w.added :
-        print("Added a second file")
-    bk.deletefile(uid2)
-    if uid2 not in bk._w.added:
-        print("Deleted the just added file")
+                                            if i_text in tag_string:
+                                                tag_string = tag_string.split(i_text)
+                                                new_text = f'{tag_string[0]}<span>{pageno_list[0]}</span>{i_text}{tag_string[1]}'
+                                                new_text = re.sub(r'<\s*p[^>]*>', '',new_text)
+                                                new_text = re.sub(r'<\s*/p[^>]*>', '',new_text)
+                                            else:
+                                                new_text = f'<span>{pageno_list[0]}</span>{tag_string}'
+                                                new_text = re.sub(r'<\s*p[^>]*>', '',new_text)
+                                                new_text = re.sub(r'<\s*/p[^>]*>', '',new_text)
 
-    
-    # Example of using the provided stream based QuickParser to parse metadataxml to look for cover id
-    print("\nExercising: QuickParser to pase metadataxml to look for cover id")
-    print(bk.getmetadataxml())
-    ps = bk.qp
-    ps.setContent(bk.getmetadataxml())
-    res = []
-    coverid = None
-    # parse the metadataxml, store away cover_id and rebuild it
-    for text, tagprefix, tagname, tagtype, tagattr in ps.parse_iter():
-        # print tagprefix, tagname, tagtype, tagattr
-        if text is not None:
-            # print text
-            res.append(text)
-        else:
-            # print tagprefix, tagname, tagtype, tagattr
-            if tagname == "meta" and tagattr.get("name",'') == "cover":
-                coverid = tagattr["content"]
-            res.append(ps.tag_info_to_xml(tagname, tagtype, tagattr))
-    print("".join(res))
+                                            if index==0:
+                                                pageno_store.append(pageno_list[0])
+                                                pageno_list=pageno_list[index+1:]
+                                                title_list=title_list[index+1:]
+                                            tag.string = new_text
+                                            break
+                
+                
+                bk.writefile(id, str(soup))
+                #print(str(soup))
+            
+                # Write the updated content back to the file
+                with open(filename, "w") as xhtml_f:
+                    xhtml_f.write(str(soup))
+                
+                print("Updated content of file", filename, "to 'siva'")
+                break
 
-    # More Examples of using the convenience mapping functions
-    print("\nExercising: Mapping of manifest id to file information")
-    print("coverid is: ", coverid, bk.id_to_href(coverid), bk.id_to_mime(coverid))
+  
 
-    # Example of copying entire book to your own new directory
-    # bk.copy_book_contents_to("/Users/kbhend/Desktop/book_copy")
-    
-    # Setting the proper Return value is important.
-    # 0 - means success
-    # anything else means failure
-    return 0
- 
- 
- 
 def main():
-    print("I reached main when I should not have\n")
+    print("This is a Sigil plugin and should not be run directly.")
     return -1
-    
+
 if __name__ == "__main__":
     sys.exit(main())
-
